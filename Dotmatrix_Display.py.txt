@@ -1,0 +1,59 @@
+import RPi.GPIO as GPIO
+import time
+
+# Define GPIO pins for MAX7219
+DIN = 17  # MOSI
+CS = 18   # Chip Select
+CLK = 27  # Clock
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
+GPIO.setup(DIN, GPIO.OUT)
+GPIO.setup(CS, GPIO.OUT)
+GPIO.setup(CLK, GPIO.OUT)
+
+def pulse(pin):
+    GPIO.output(pin, 1)
+    time.sleep(0.00001)
+    GPIO.output(pin, 0)
+
+def send_byte(data):
+    for i in range(8):
+        GPIO.output(DIN, data & 0x80)
+        pulse(CLK)
+        data <<= 1
+
+def send_cmd(register, data):
+    GPIO.output(CS, 0)
+    send_byte(register)
+    send_byte(data)
+    GPIO.output(CS, 1)
+
+def init_max7219():
+    send_cmd(0x09, 0x00)  # Decode mode: none
+    send_cmd(0x0A, 0x05)  # Intensity: range 0x00 (Dimmest) to 0x0F (Brightest)
+    send_cmd(0x0B, 0x07)  # Scan limit: Display all 8 digits
+    send_cmd(0x0C, 0x01)  # Shutdown register: Normal operation
+    send_cmd(0x0F, 0x00)  # Display test: Off
+
+def clear_display():
+    for i in range(1, 9):
+        send_cmd(i, 0x00)
+
+def show_pattern():
+    pattern = [0xFF, 0x81, 0xBD, 0xA5, 0xA5, 0xBD, 0x81, 0xFF]  # Concentric Squares
+    for i in range(8):
+        send_cmd(i + 1, pattern[i])
+
+def main():
+   while True:
+      init_max7219()
+      clear_display()
+      show_pattern()
+      time.sleep(5)
+      clear_display()
+      GPIO.cleanup()
+
+# Execute the main program
+if __name__ == '__main__':
+   main()
