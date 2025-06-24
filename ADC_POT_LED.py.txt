@@ -1,0 +1,62 @@
+import RPi.GPIO as GPIO
+import time
+
+# GPIO mappings
+adc_data_pins = [26, 20, 19, 16, 13, 12, 6, 5]  # D0–D7 (ADC output)
+led_pins = [4, 17, 18, 27, 22, 23, 24, 25]        # Separate GPIOs for LEDs
+
+ALE = 2
+START = 21
+EOC = 7
+OE = 3
+
+GPIO.setmode(GPIO.BCM)
+
+# Setup ADC GPIO
+GPIO.setup(adc_data_pins, GPIO.IN)
+GPIO.setup([ALE, START, OE], GPIO.OUT)
+GPIO.setup(EOC, GPIO.IN)
+
+# Setup LED GPIO
+for pin in led_pins:
+    GPIO.setup(pin, GPIO.OUT)
+
+def read_adc():
+    GPIO.output(ALE, 1)
+    time.sleep(0.001)
+    GPIO.output(START, 1)
+    time.sleep(0.001)
+    GPIO.output(ALE, 0)
+    GPIO.output(START, 0)
+
+    while GPIO.input(EOC) == 1:
+        pass
+
+    GPIO.output(OE, 1)
+    time.sleep(0.001)
+
+    value = 0
+    for i, pin in enumerate(adc_data_pins):
+        if GPIO.input(pin):
+            value |= (1 << i)
+
+    GPIO.output(OE, 0)
+    return value
+
+def display_led(value):
+    for i, pin in enumerate(led_pins):
+        bit = (value >> i) & 1
+        GPIO.output(pin, bit)
+
+def main():
+   while True:
+      adc_val = read_adc()
+      print(f"ADC Value: {adc_val}")
+      display_led(adc_val)
+      time.sleep(1)
+      GPIO.cleanup()
+
+# Execute the main program
+if __name__ == '__main__':
+   main()
+
