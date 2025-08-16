@@ -1,0 +1,105 @@
+import RPi.GPIO as GPIO
+import time
+
+# --- Pin assignments ---
+ROWS = [5, 6, 12, 13]         	# R1..R4 (outputs)
+COLS = [16, 19, 20, 26]       	# C1..C4 (inputs with pull-ups)
+LEDS = [4, 17, 18, 27]       	# bit0..bit3 (outputs)
+
+# Matrix for symbols
+KEYS = [
+    ['7','8','9','/'],
+    ['4','5','6','*'],
+    ['1','2','3','-'],
+    ['#','0','=','+']
+]
+
+# Map symbol -> nibble (0..15) to display on 4 LEDs
+SYM2HEX = {
+    '7':7,'8':8,'9':9,'/':10,
+    '4':4,'5':5,'6':6,'*':11,
+    '1':1,'2':2,'3':3,'-':12,
+    '#':15,'0':0,'=':14,'+':13
+}
+
+# Debounce settings
+DEBOUNCE_MS = 30
+CONFIRM_MS  = 30
+
+def setup():
+    GPIO.setmode(GPIO.BCM)
+    # Columns as inputs with internal pull-ups
+    for c in COLS:
+        GPIO.setup(c, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    # Rows as outputs, idle HIGH (no key pressed keeps columns HIGH)
+    for r in ROWS:
+        GPIO.setup(r, GPIO.OUT)
+        GPIO.output(r, GPIO.HIGH)
+    # LEDs as outputs, start OFF
+    for p in LEDS:
+        GPIO.setup(p, GPIO.OUT)
+        GPIO.output(p, GPIO.LOW)
+
+def read_key_once():
+    """
+    Scan keypad once. Return (symbol) or None if no key is pressed.
+    Strategy: drive one row LOW at a time; any LOW on a column means pressed.
+    """
+    for r_idx, r in enumerate(ROWS):
+        GPIO.output(r, GPIO.LOW)   			# activate row
+        time.sleep(0.001)          			# settle ~1 ms
+        for c_idx, c in enumerate(COLS):
+            if GPIO.input(c) == GPIO.LOW:  # pulled low -> pressed
+                GPIO.output(r, GPIO.HIGH)
+                return KEYS[r_idx][c_idx]
+        GPIO.output(r, GPIO.HIGH)
+    return None
+
+def read_key_debounced():
+    """
+    Debounce: wait for a stable press, confirm, then wait for release.
+    """
+    # Wait for any press
+    sym = None
+    while sym is None:
+        sym = read_key_once()
+        time.sleep(DEBOUNCE_MS/1000.0)
+
+    # Confirm the same key after CONFIRM_MS
+    time.sleep(CONFIRM_MS/1000.0)
+    confirm = read_key_once()
+    if confirm != sym:
+        return None  					# unstable, ignore
+
+    # Wait for release (all columns HIGH again)
+    while read_key_once() is not None:
+        time.sleep(0.01)
+
+    return sym
+
+def show_nibble_on_leds(val):
+    """
+    val: 0..15. LEDS[0] is LSB, LEDS[3] is MSB.
+    """
+    for bit, pin in enumerate(LEDS):
+        GPIO.output(pin, GPIO.HIGH if (val >> bit) & 1 else GPIO.LOW)
+
+def main():
+    setup()
+    print("4x4 Keypad ? 4 LEDs (HEX). Press Ctrl+C to exit.")
+    try:
+        while True:
+            sym = read_key_debounced()
+            if sym is None:
+                continue
+            val = SYM2HEX.get(sym, 0)
+            print(f"Key: {sym}  ->  hex:{val:X}  bin:{val:04b}")
+            show_nibble_on_leds(val)
+            # small show time is not required; LEDs stay latched until next press
+    except KeyboardInterrupt:
+        pass
+    finally:
+        GPIO.cleanup()
+
+if __name__ == "__main__":
+    main()
